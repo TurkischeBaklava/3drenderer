@@ -20,3 +20,4 @@ vec3_t vec3_rotate_y(vec3_t v, float angle);
 
 //Rotate around Z axis
 vec3_t vec3_rotate_z(vec3_t v, float angle);
+

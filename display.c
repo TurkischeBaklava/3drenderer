@@ -75,7 +75,7 @@ void render_color_buffer() {
 
 void clear_color_buffer(uint32_t color) {
 
-	for (size_t x = 0; x < window_width * window_height; x++)
+	for (int x = 0; x < window_width * window_height; x++)
 	{
 		colour_buffer[x] = color;
 	}
@@ -109,11 +109,11 @@ void draw_grid(void) {
 
 void draw_rect(int x, int y, int width, int height, uint32_t color) {
 
-	for (size_t i = 0; i < width; i++)
+	for (int i = 0; i < width; i++)
 	{
 		int current_x = i + x;
 		
-		for (size_t j = 0; j < height; j++)
+		for (int j = 0; j < height; j++)
 		{
 			int current_y = j + y;
 
@@ -123,5 +123,38 @@ void draw_rect(int x, int y, int width, int height, uint32_t color) {
 
 }
 
+void draw_line(int x0, int y0, int x1, int y1, uint32_t Color)
+{
+	//Get the x and y delta
+	int delta_x = (x1 - x0);
+	int delta_y = (y1 - y0);
 
+	//Run
+	int side_length = abs(delta_x) >= abs(delta_y) ? abs(delta_x) : abs(delta_y);
 
+	//increment rate for each axis, slope
+	float inc_x = delta_x / (float)side_length;
+	float inc_y = delta_y / (float)side_length;
+
+	float current_x = x0;
+	float current_y = y0;
+
+	//Draw pixel
+	for (int i = 0; i <= side_length; i++)
+	{
+		draw_pixel(
+		round(current_x),
+		round(current_y),
+		Color);
+		
+		current_x += inc_x;
+		current_y += inc_y;
+	}
+
+}
+
+void draw_triangle(int x0, int y0, int x1, int y1, int x2, int y2, uint32_t Color) {
+	draw_line(x0, y0, x1, y1, Color);
+	draw_line(x1, y1, x2, y2, Color);
+	draw_line(x2, y2, x0, y0, Color);
+}

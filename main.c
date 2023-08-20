@@ -102,9 +102,9 @@ void update(void) {
 	//camera_position.z += 0.005;
 	/*if (camera_position.z >= 5.0)camera_position.z = -5;*/
 
-	cube_rotation.z += 0.008;
+	//cube_rotation.x += 0.008;
 	cube_rotation.y += 0.008;
-	cube_rotation.x += 0.008;
+	//cube_rotation.z += 0.008;
 
 	//Loop all triangle faces
 	for (int i = 0; i < N_MESH_FACES; i++)
@@ -116,6 +116,7 @@ void update(void) {
 		face_vertices[1] = mesh_vertices[mesh_face.b - 1];
 		face_vertices[2] = mesh_vertices[mesh_face.c - 1];
 
+		//Triangle stores the actual projected point 
 		triangle_t projected_triangle;
 
 		for (int j = 0; j < 3; j++)
@@ -154,17 +155,24 @@ void render(void) {
 	
 	///Loop all projected triangles and render here
 	for (int i = 0; i < N_MESH_FACES; i++) {
+
+		triangle_t triangle = triangles_to_render[i];
+
 		for (int j = 0; j < 3; j++)
 		{
 			draw_rect(
-				triangles_to_render[i].points[j].x,
-				triangles_to_render[i].points[j].y,
+				triangle.points[j].x,
+				triangle.points[j].y,
 				4,
 				4,
 				0xFFFFFFFF
 				);
 		}
+
+		draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFFFFFFFF);
 	}
+
+
 
 
 	//Render here
