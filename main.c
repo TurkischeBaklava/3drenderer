@@ -3,17 +3,15 @@
 #include <stdbool.h>
 #include <SDL.h>
 #include <SDL_timer.h>
+#include "array.h"
 #include "display.h"
 #include "vector.h"
 #include "mesh.h"
+#include "main.h"
 
-triangle_t triangles_to_render[N_MESH_FACES];
+triangle_t* triangles_to_render = NULL;
 
-vec3_t camera_position = { .x = 0, .y = 0, .z = -5 };
-vec3_t cube_rotation = { .x = 0, .y = 0, .z = 0 };
-
-
-
+vec3_t camera_position = { .x = 0, .y = 0, .z = -2.5 };
 float fov_factor = 640;
 
 bool is_running = false;
@@ -42,7 +40,9 @@ void setup(void) {
 		window_height
 	);
 
-
+	// Loads the cube values in the mesh data structure
+	//load_cube_mesh_data();
+	load_obj_file_data("./Resource/f22.obj");
 } 
 
 /*
@@ -98,23 +98,28 @@ void update(void) {
 		SDL_Delay(time_to_wait);
 	}
 
+	// Initalize the array of triangle array
+	triangles_to_render = NULL;
+
+
 	////Camera position animated
 	//camera_position.z += 0.005;
 	/*if (camera_position.z >= 5.0)camera_position.z = -5;*/
 
-	//cube_rotation.x += 0.008;
-	cube_rotation.y += 0.008;
-	//cube_rotation.z += 0.008;
+	mesh.rotation.x += 0.008;
+	mesh.rotation.y = 0.008;
+	mesh.rotation.z = 180;
 
 	//Loop all triangle faces
-	for (int i = 0; i < N_MESH_FACES; i++)
+	int num_faces = array_length(mesh.faces);
+	for (int i = 0; i < num_faces; i++)
 	{
-		face_t mesh_face = mesh_faces[i];
+		face_t mesh_face = mesh.faces[i];
 
 		vec3_t face_vertices[3];
-		face_vertices[0] = mesh_vertices[mesh_face.a - 1];
-		face_vertices[1] = mesh_vertices[mesh_face.b - 1];
-		face_vertices[2] = mesh_vertices[mesh_face.c - 1];
+		face_vertices[0] = mesh.vertices[mesh_face.a - 1];
+		face_vertices[1] = mesh.vertices[mesh_face.b - 1];
+		face_vertices[2] = mesh.vertices[mesh_face.c - 1];
 
 		//Triangle stores the actual projected point 
 		triangle_t projected_triangle;
@@ -122,9 +127,9 @@ void update(void) {
 		for (int j = 0; j < 3; j++)
 		{
 			vec3_t transformed_vertex = face_vertices[j];
-			transformed_vertex = vec3_rotate_x(transformed_vertex, cube_rotation.x);
-			transformed_vertex = vec3_rotate_y(transformed_vertex, cube_rotation.y);
-			transformed_vertex = vec3_rotate_z(transformed_vertex, cube_rotation.z);
+			transformed_vertex = vec3_rotate_x(transformed_vertex, mesh.rotation.x);
+			transformed_vertex = vec3_rotate_y(transformed_vertex, mesh.rotation.y);
+			transformed_vertex = vec3_rotate_z(transformed_vertex, mesh.rotation.z);
 
 			transformed_vertex.z -= camera_position.z;
 
@@ -137,13 +142,9 @@ void update(void) {
 			projected_triangle.points[j] = projected_point;
 		}
 
-		triangles_to_render[i] = projected_triangle;
-		
+		//triangles_to_render[i] = projected_triangle;
+		array_push(triangles_to_render, projected_triangle);
 	}
-
-
-
-
 
 }
 
@@ -154,7 +155,9 @@ void render(void) {
 
 	
 	///Loop all projected triangles and render here
-	for (int i = 0; i < N_MESH_FACES; i++) {
+	int num_triangles = array_length(triangles_to_render);
+
+	for (int i = 0; i < num_triangles; i++) {
 
 		triangle_t triangle = triangles_to_render[i];
 
@@ -163,16 +166,17 @@ void render(void) {
 			draw_rect(
 				triangle.points[j].x,
 				triangle.points[j].y,
-				4,
-				4,
-				0xFFFFFFFF
+				1,
+				1,
+				0xFFFFFF99
 				);
 		}
 
-		draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFFFFFFFF);
+		draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFFFF);
 	}
 
-
+	//Clear the array of triangles to render every frame loop
+	array_free(triangles_to_render);
 
 
 	//Render here
@@ -184,6 +188,12 @@ void render(void) {
 }
 
 
+// Free the memory that was dynamically allocated by the person
+void free_resources(void) {
+	free(colour_buffer);
+	array_free(mesh.faces);
+	array_free(mesh.vertices);
+}
 
 
 int main(int argc, char* args[]) {
@@ -191,8 +201,6 @@ int main(int argc, char* args[]) {
 	is_running = initialize_window();
 
 	setup();
-
-
 
 	while (is_running) {
 		process_input();
@@ -202,6 +210,7 @@ int main(int argc, char* args[]) {
 
 
 	destroy_window();
+	free_resources();
 
 	return 0;
 }
