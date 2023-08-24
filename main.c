@@ -183,7 +183,6 @@ void render(void) {
 	render_color_buffer();
 	clear_color_buffer(0xFF333300);
 
-
 	SDL_RenderPresent(renderer);
 }
 
