@@ -7,7 +7,7 @@
 #include "display.h"
 #include "vector.h"
 #include "mesh.h"
-#include "main.h"
+
 
 triangle_t* triangles_to_render = NULL;
 
