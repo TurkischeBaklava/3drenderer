@@ -19,6 +19,12 @@ enum render_method {
 	RENDER_FILL_TRIANGLE_WIRE
 } render_method;
 
+enum light_method {
+	LIGHT_NONE,
+	FLAT_SHADING
+
+} light_method;
+
 // Variable declarations
 extern SDL_Window* window;
 extern SDL_Renderer* renderer;

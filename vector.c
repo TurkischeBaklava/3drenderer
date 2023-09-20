@@ -101,6 +101,16 @@ vec3_t vec3_cross(vec3_t v1, vec3_t v2) {
 	return result;
 }
 
+vec3_t negate(vec3_t v)
+{
+	vec3_t negated_v = {
+		.x = -v.x,
+		.y = -v.y,
+		.z = -v.z
+	};
+	return negated_v;
+}
+
 float vec3_dot(vec3_t v1, vec3_t v2) {
 	return (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
 }
@@ -124,6 +134,7 @@ vec3_t vec3_rotate_z(vec3_t v, float angle) {
 	return rotated_vector;
 }
 
+
 vec3_t vec3_rotate_x(vec3_t v, float angle) {
 	vec3_t rotated_vector = {
 		.x = v.x,
@@ -142,3 +153,41 @@ vec3_t vec3_rotate_y(vec3_t v, float angle) {
 	return rotated_vector;
 }
 
+// Vector conversion functions
+
+vec4_t vec4_from_vec3(vec3_t v)
+{
+	vec4_t result = {.x= v.x, .y= v.y, .z= v.z, .w= 1};
+	return result;
+}
+
+vec3_t vec3_from_vec4(vec4_t v)
+{
+	vec3_t result = { .x = v.x, .y = v.y, .z = v.z };
+	return result;
+}
+
+
+
+
+vec3_t calc_face_normal(vec4_t* vertices)
+{
+	//TODO: Back face culling
+	vec3_t vector_a = vec3_from_vec4(vertices[0]); /*  A  */
+	vec3_t vector_b = vec3_from_vec4(vertices[1]); /* / \ */
+	vec3_t vector_c = vec3_from_vec4(vertices[2]); /*C---B*/
+
+	// Get the vector substraction of B-A and C-A
+	vec3_t vector_ab = vec3_sub(vector_b, vector_a);
+	vec3_t vector_ac = vec3_sub(vector_c, vector_a);
+	vec3_normalize(&vector_ab);
+	vec3_normalize(&vector_ac);
+
+	// Compute the face normal (using cross product to find perpendicular)
+	vec3_t normal = vec3_cross(vector_ab, vector_ac);
+	
+	// Normalize the face normal vector
+	vec3_normalize(&normal);
+
+	return normal;
+}

@@ -7,18 +7,22 @@
 #include "display.h"
 #include "vector.h"
 #include "mesh.h"
+#include "matrix.h"
+#include "light.h"
 
 
 triangle_t* triangles_to_render = NULL;
 
 vec3_t camera_position = { 0,0,0 };
-float fov_factor = 640;
+mat4_t perspective_projection_matrix;
 
 bool is_running = false;
+int vertex_size = 1;
 uint32_t previous_frame_time = 0;
 
-int vertex_size = 1;
+light_t global_light;
 
+void bubble_sort(triangle_t*, int);
 
 /*
 	@brief Initialize everything before the game loop starts.
@@ -27,6 +31,9 @@ void setup(void) {
 
 	render_method = RENDER_WIRE;
 	cull_method = CULL_BACKFACE;
+	light_method = LIGHT_NONE;
+
+	//global_light.direction = { -1, 0, 1 };
 
 	// Allocate the required memory in bytes to hold the color buffer
 	colour_buffer = (uint32_t*) malloc(sizeof(uint32_t) * window_width * window_height);
@@ -46,9 +53,16 @@ void setup(void) {
 		window_height
 	);
 
+	// Initialize the perspective projection matrix
+	float fov = M_PI / 3.0f; // radians: the same as 180/3, or 60 deg
+	float aspect = (float)window_height / (float)window_width;
+	float znear = 0.1f;
+	float zfar = 100.0f;
+	perspective_projection_matrix = mat4_make_perspective(fov, aspect, znear, zfar);
+
 	// Loads the cube values in the mesh data structure
 	load_cube_mesh_data();
-	//load_obj_file_data("./Resource/cube.obj");
+	//load_obj_file_data("./Resource/f22.obj");
 } 
 
 /*
@@ -100,6 +114,10 @@ void process_input(void) {
 		{
 			cull_method = CULL_NONE;
 		}
+		else if (event.key.keysym.sym == SDLK_l)
+		{
+			light_method = light_method == FLAT_SHADING ? LIGHT_NONE : FLAT_SHADING;
+		}
 		break;
 
 	default:
@@ -108,15 +126,19 @@ void process_input(void) {
 
 }
 
-vec2_t project(vec3_t point) {
 
-	vec2_t projected_point = {
-		.x = (fov_factor * point.x) / point.z,
-		.y = (fov_factor * point.y) / point.z
-	};
-	 return projected_point;
-}
-
+/*
+	Deprecated
+	We are using the perspective projection matrix for this our projection now.
+*/
+//vec2_t project(vec3_t point) {
+//
+//	vec2_t projected_point = {
+//		.x = (fov_factor * point.x) / point.z,
+//		.y = (fov_factor * point.y) / point.z
+//	};
+//	 return projected_point;
+//}
 
 
 void update(void) {
@@ -133,18 +155,30 @@ void update(void) {
 		SDL_Delay(time_to_wait);
 	}
 
-	// Initalize the array of triangle array
+	
 	triangles_to_render = NULL;
 
 
-	////Camera position animated
-	//camera_position.z += 0.005;
-	/*if (camera_position.z >= 5.0)camera_position.z = -5;*/
-
 	
+	// Apply transformations
+
 	mesh.rotation.x += 0.008;
 	mesh.rotation.y += 0.008;
-	//mesh.rotation.z = 180;
+	mesh.rotation.z += 0.008;
+
+	/*mesh.scale.x += 0.002;*/
+	/*mesh.scale.y += 0.001; */
+
+	//mesh.translation.x += 0.01;
+	mesh.translation.z = 5.0;
+
+	// Create a scale matrix, rotation and translation that will be used to multiply the mesh vertices
+	mat4_t scale_matrix = mat4_make_scale(mesh.scale.x, mesh.scale.y, mesh.scale.z);
+	mat4_t translation_matrix = mat4_make_translation(mesh.translation.x, mesh.translation.y, mesh.translation.z);
+	mat4_t rotation_matrix_x = mat4_make_rotation_x(mesh.rotation.x);
+	mat4_t rotation_matrix_y = mat4_make_rotation_y(mesh.rotation.y);
+	mat4_t rotation_matrix_z = mat4_make_rotation_z(mesh.rotation.z);
+
 
 	//Loop all triangle faces
 	int num_faces = array_length(mesh.faces);
@@ -157,17 +191,45 @@ void update(void) {
 		face_vertices[1] = mesh.vertices[mesh_face.b - 1];
 		face_vertices[2] = mesh.vertices[mesh_face.c - 1];
 
-		vec3_t transformed_vertices[3];
+		vec4_t transformed_vertices[3];
 
 		for (int j = 0; j < 3; j++)
 		{
-			vec3_t transformed_vertex = face_vertices[j];
+			vec4_t transformed_vertex = vec4_from_vec3(face_vertices[j]);
+
+
+			// Create a World Matrix combining scale, rotation and translation matrices
+			// Order matters: First scale, then rotate, then translate.
+			// [T]*[R]*[S]*v
+			mat4_t world_matrix = mat4_identity();
+			world_matrix = mat4_mul_mat4(scale_matrix,world_matrix);
+			world_matrix = mat4_mul_mat4(rotation_matrix_z,world_matrix);
+			world_matrix = mat4_mul_mat4(rotation_matrix_y,world_matrix);
+			world_matrix = mat4_mul_mat4(rotation_matrix_z,world_matrix);
+			world_matrix = mat4_mul_mat4(translation_matrix,world_matrix);
+
+
+			transformed_vertex = mat4_mul_vec4(world_matrix, transformed_vertex);
+
+			/* Use a matrix to scale and translate our original vertex
+			 Matrix multipication matters. These transform operations should be in order!!!
+			
+
+			// Rotation done with matrix transformation (each seprately)
+			
+			transformed_vertex = mat4_mul_vec4(scale_matrix, transformed_vertex);
+			transformed_vertex = mat4_mul_vec4(rotation_matrix_x, transformed_vertex);
+			transformed_vertex = mat4_mul_vec4(rotation_matrix_y, transformed_vertex);
+			transformed_vertex = mat4_mul_vec4(rotation_matrix_z, transformed_vertex);
+			transformed_vertex = mat4_mul_vec4(translation_matrix, transformed_vertex);
+
+
+			// Rotation done with vector math formulas
 
 			transformed_vertex = vec3_rotate_x(transformed_vertex, mesh.rotation.x);
 			transformed_vertex = vec3_rotate_y(transformed_vertex, mesh.rotation.y);
-			transformed_vertex = vec3_rotate_z(transformed_vertex, mesh.rotation.z);
+			transformed_vertex = vec3_rotate_z(transformed_vertex, mesh.rotation.z);*/
 
-			transformed_vertex.z += 5;
 
 			transformed_vertices[j] = transformed_vertex;
 		}
@@ -175,25 +237,11 @@ void update(void) {
 		// Enable/disable back-face culling
 		if (cull_method == CULL_BACKFACE)
 		{
-			//TODO: Back face culling
-			vec3_t vector_a = transformed_vertices[0]; /*  A  */
-			vec3_t vector_b = transformed_vertices[1]; /* / \ */
-			vec3_t vector_c = transformed_vertices[2]; /*C---B*/
-
-			// Get the vector substraction of B-A and C-A
-			vec3_t vector_ab = vec3_sub(vector_b, vector_a);
-			vec3_t vector_ac = vec3_sub(vector_c, vector_a);
-			vec3_normalize(&vector_ab);
-			vec3_normalize(&vector_ac);
-
-			// Compute the face normal (using cross product to find perpendicular)
-			vec3_t normal = vec3_cross(vector_ab, vector_ac);
-
-			// Normalize the face normal vector
-			vec3_normalize(&normal);
+			// Calculate the face normal
+			vec3_t normal = calc_face_normal(transformed_vertices);
 
 			// Find the vector between a point in the triangle and the camera origin
-			vec3_t camera_ray = vec3_sub(camera_position, vector_a);
+			vec3_t camera_ray = vec3_sub(camera_position, vec3_from_vec4(transformed_vertices[0]));
 
 			// Calcute how aligned the camera ray is with the face normal
 			float dot_normal_camera = vec3_dot(camera_ray, normal);
@@ -202,32 +250,72 @@ void update(void) {
 			if (dot_normal_camera < 0) continue;
 		}
 
+
+		// Apply lightning here
+		if (light_method == FLAT_SHADING)
+		{
+			// Negate the light ray
+			vec3_t light_ray = { -1.f, 1.f, -0.5f };
+			vec3_normalize(&light_ray);
+
+			
+			// Calculate the face normal
+			vec3_t face_normal = calc_face_normal(transformed_vertices);
+
+			float face_normal_dot_light_ray = vec3_dot(light_ray, face_normal);
+			
+			// Calculate percentage factor
+			float percentage_factor = (face_normal_dot_light_ray + 1) / 2;
+			
+			mesh_face.color = light_apply_intensity(mesh_face.color, percentage_factor);
+		}
 	
 		//Triangle stores the actual projected point 
 		//triangle_t projected_triangle;
 
-		vec2_t projected_points[3];
+		vec4_t projected_points[3];
 		for (int j = 0; j < 3; j++) {
 
 			//Project the current vertex
-			projected_points[j] = project(transformed_vertices[j]);
+			//projected_points[j] = project(vec3_from_vec4(transformed_vertices[j])); We are not using the project function anymore
 
-			projected_points[j].x += (window_width / 2);
-			projected_points[j].y += (window_height / 2);
+			// projection with matrix mult
+			projected_points[j] = mat4_mult_vec4_project(perspective_projection_matrix, transformed_vertices[j]);
 
+			//Scale
+			projected_points[j].x *= window_width / 2.0f;
+			projected_points[j].y *= window_height / 2.0f;
+
+			//Translate 
+			projected_points[j].x += (window_width / 2.0f);
+			projected_points[j].y += (window_height / 2.0f);
 		}
 
+		// Calculate the average depth for each face based on the vertices after transformation
+		// we are simply assuming each face has average depth
+		float avg_depth = (transformed_vertices[0].z + transformed_vertices[1].z + transformed_vertices[2].z) / 3.0f;
+
+
 		triangle_t projected_triangle = {
-			.points =
-			{projected_points[0].x,projected_points[0].y,
-			 projected_points[1].x,projected_points[1].y,
-			 projected_points[2].x,projected_points[2].y},
-			.color = mesh_face.color
+			.points = {
+				{projected_points[0].x,projected_points[0].y},
+				{projected_points[1].x,projected_points[1].y},
+				{projected_points[2].x,projected_points[2].y}
+			},
+			.color = mesh_face.color,
+			.avg_depth = avg_depth
 		};
 
 		//triangles_to_render[i] = projected_triangle;
 		array_push(triangles_to_render, projected_triangle);
 	}
+
+
+
+
+	// Sort the triangles to render by their avg_depth (buble sort)
+	int arr_length = array_length(triangles_to_render);
+	bubble_sort(triangles_to_render, arr_length);
 
 }
 
@@ -239,6 +327,7 @@ void render(void) {
 	// Set vertex size here for RENDER_WIRE_VERTEX option
 	vertex_size = render_method == RENDER_WIRE_VERTEX ? 4 : 1;
 	
+
 
 	///Loop all projected triangles and render here
 	int num_triangles = array_length(triangles_to_render);
@@ -259,14 +348,13 @@ void render(void) {
 
 		if (render_method == RENDER_FILL_TRIANGLE || render_method == RENDER_FILL_TRIANGLE_WIRE)
 		{
-		draw_filled_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, triangle.color);
+			draw_filled_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, triangle.color);
 		}
 
 		if (render_method == RENDER_WIRE || render_method == RENDER_WIRE_VERTEX || render_method == RENDER_FILL_TRIANGLE_WIRE)
 		{
-		draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFF000000);
+			draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFF000000);
 		}
-
 	}
 
 
@@ -297,15 +385,44 @@ int main(int argc, char* args[]) {
 
 	setup();
 
+
 	while (is_running) {
 		process_input();
 		update();
 		render();
 	}
 
+	int arr_length = array_length(triangles_to_render);
+
 
 	destroy_window();
 	free_resources();
 
 	return 0;
+}
+
+void swap_array(triangle_t* t1,triangle_t* t2) {
+	triangle_t temp = *t1;
+	*t1 = *t2;
+	*t2 = temp;
+}
+
+void bubble_sort(triangle_t* t_arr, int n) {
+
+	bool swapped;
+	for (int i = 0; i < n-1; i++)
+	{
+		swapped = false;
+		for (int j = 0; j < n-i-1; j++)
+		{
+			if (t_arr[j].avg_depth < t_arr[j+1].avg_depth)
+			{
+				swap_array(&t_arr[j], &t_arr[j + 1]);
+				swapped = true;
+			}
+		}
+
+		if (swapped == false) break;
+	}
+
 }
