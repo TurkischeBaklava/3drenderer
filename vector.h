@@ -28,6 +28,7 @@ float vec2_dot(vec2_t v1, vec2_t v2);
 
 void vec2_normalize(vec2_t* v);
 
+vec2_t vec2_from_vec4(vec4_t v);
  
 //Vector 3D Functions
 
@@ -68,3 +69,9 @@ vec3_t vec3_from_vec4(vec4_t v);
 //Find face normal
 
 vec3_t calc_face_normal(vec4_t* vertices);
+
+
+//Barycentric_weights
+ 
+vec3_t barycentric_weights(vec2_t a, vec2_t b, vec2_t c, vec2_t p);
+

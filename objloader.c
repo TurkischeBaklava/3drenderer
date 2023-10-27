@@ -34,7 +34,7 @@ bool load_obj(char* pathname) {
 		{
 			int a, b, c;
 			int ret = sscanf(buffer, "%*c %d/%*d/%*d %d/%*d/%*d %d/%*d/%*d", &a, &b, &c);
-			face_t obj_face = {.a = a, .b = b, .c = c};
+			face_t obj_face = {.a = a, .b = b, .c = c, .color = 0xffffffff};
 			array_push(mesh.faces, obj_face)
 		}
 	}

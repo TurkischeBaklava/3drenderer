@@ -8,3 +8,5 @@ typedef struct {
 
 
 uint32_t light_apply_intensity(uint32_t original_color, float percentage_factor);
+
+light_t g_light;

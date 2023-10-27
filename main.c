@@ -7,6 +7,7 @@
 #include "display.h"
 #include "vector.h"
 #include "mesh.h"
+#include "upng.h"
 #include "matrix.h"
 #include "light.h"
 
@@ -20,8 +21,6 @@ bool is_running = false;
 int vertex_size = 1;
 uint32_t previous_frame_time = 0;
 
-light_t global_light;
-
 void bubble_sort(triangle_t*, int);
 
 /*
@@ -29,11 +28,10 @@ void bubble_sort(triangle_t*, int);
 */
 void setup(void) {
 
-	render_method = RENDER_WIRE;
+	render_method = RENDER_FILL_TRIANGLE;
 	cull_method = CULL_BACKFACE;
-	light_method = LIGHT_NONE;
+	light_method = FLAT_SHADING;
 
-	//global_light.direction = { -1, 0, 1 };
 
 	// Allocate the required memory in bytes to hold the color buffer
 	colour_buffer = (uint32_t*) malloc(sizeof(uint32_t) * window_width * window_height);
@@ -47,22 +45,27 @@ void setup(void) {
 	// Creating a SDL texture that is used to display the color buffer
 	colour_buffer_texture = SDL_CreateTexture(
 		renderer,
-		SDL_PIXELFORMAT_ABGR8888,
+		SDL_PIXELFORMAT_RGBA32,//SDL_PIXELFORMAT_ABGR8888,
 		SDL_TEXTUREACCESS_STREAMING,
 		window_width,
 		window_height
 	);
 
 	// Initialize the perspective projection matrix
-	float fov = M_PI / 3.0f; // radians: the same as 180/3, or 60 deg
+	float fov = 60.f; // radians: the same as 180/3, or 60 deg
 	float aspect = (float)window_height / (float)window_width;
 	float znear = 0.1f;
 	float zfar = 100.0f;
-	perspective_projection_matrix = mat4_make_perspective(fov, aspect, znear, zfar);
+	perspective_projection_matrix = mat4_make_perspective((M_PI / 180) * fov, aspect, znear, zfar);
+
+	// Manually load the hardcoded texture data from the static array
+	//mesh_texture = (uint32_t*)REDBRICK_TEXTURE;
 
 	// Loads the cube values in the mesh data structure
 	load_cube_mesh_data();
-	//load_obj_file_data("./Resource/f22.obj");
+	//load_obj_file_data("./Resource/cube.obj");
+
+	load_png_texture_data("./Resource/yoda.png");
 } 
 
 /*
@@ -106,6 +109,14 @@ void process_input(void) {
 			// displays both filled triangles and wireframe lines
 			render_method = RENDER_FILL_TRIANGLE_WIRE;
 		}
+		else if (event.key.keysym.sym == SDLK_5)
+		{
+			render_method = RENDER_TEXTURED;
+		}
+		else if (event.key.keysym.sym == SDLK_6)
+		{
+			render_method = RENDER_TEXTURED_WIRE;
+		}
 		else if (event.key.keysym.sym == SDLK_c)
 		{
 			cull_method = CULL_BACKFACE;
@@ -127,24 +138,9 @@ void process_input(void) {
 }
 
 
-/*
-	Deprecated
-	We are using the perspective projection matrix for this our projection now.
-*/
-//vec2_t project(vec3_t point) {
-//
-//	vec2_t projected_point = {
-//		.x = (fov_factor * point.x) / point.z,
-//		.y = (fov_factor * point.y) / point.z
-//	};
-//	 return projected_point;
-//}
-
 
 void update(void) {
 
-	//Naive way to implement delaying
-	//while (!SDL_TICKS_PASSED(SDL_GetTicks(), previous_frame_time + FRAME_TARGET_TIME));
 
 	previous_frame_time = SDL_GetTicks();
 
@@ -164,10 +160,10 @@ void update(void) {
 
 	mesh.rotation.x += 0.008;
 	mesh.rotation.y += 0.008;
-	mesh.rotation.z += 0.008;
+	mesh.rotation.z += 0.010;
 
-	/*mesh.scale.x += 0.002;*/
-	/*mesh.scale.y += 0.001; */
+	/*mesh.scale.x += 0.002;
+	mesh.scale.y += 0.001; */
 
 	//mesh.translation.x += 0.01;
 	mesh.translation.z = 5.0;
@@ -182,6 +178,7 @@ void update(void) {
 
 	//Loop all triangle faces
 	int num_faces = array_length(mesh.faces);
+
 	for (int i = 0; i < num_faces; i++)
 	{
 		face_t mesh_face = mesh.faces[i];
@@ -191,6 +188,7 @@ void update(void) {
 		face_vertices[1] = mesh.vertices[mesh_face.b - 1];
 		face_vertices[2] = mesh.vertices[mesh_face.c - 1];
 
+		// Transformed position of face_vertices
 		vec4_t transformed_vertices[3];
 
 		for (int j = 0; j < 3; j++)
@@ -203,7 +201,7 @@ void update(void) {
 			// [T]*[R]*[S]*v
 			mat4_t world_matrix = mat4_identity();
 			world_matrix = mat4_mul_mat4(scale_matrix,world_matrix);
-			world_matrix = mat4_mul_mat4(rotation_matrix_z,world_matrix);
+			world_matrix = mat4_mul_mat4(rotation_matrix_x,world_matrix);
 			world_matrix = mat4_mul_mat4(rotation_matrix_y,world_matrix);
 			world_matrix = mat4_mul_mat4(rotation_matrix_z,world_matrix);
 			world_matrix = mat4_mul_mat4(translation_matrix,world_matrix);
@@ -211,64 +209,46 @@ void update(void) {
 
 			transformed_vertex = mat4_mul_vec4(world_matrix, transformed_vertex);
 
-			/* Use a matrix to scale and translate our original vertex
-			 Matrix multipication matters. These transform operations should be in order!!!
-			
-
-			// Rotation done with matrix transformation (each seprately)
-			
-			transformed_vertex = mat4_mul_vec4(scale_matrix, transformed_vertex);
-			transformed_vertex = mat4_mul_vec4(rotation_matrix_x, transformed_vertex);
-			transformed_vertex = mat4_mul_vec4(rotation_matrix_y, transformed_vertex);
-			transformed_vertex = mat4_mul_vec4(rotation_matrix_z, transformed_vertex);
-			transformed_vertex = mat4_mul_vec4(translation_matrix, transformed_vertex);
-
-
-			// Rotation done with vector math formulas
-
-			transformed_vertex = vec3_rotate_x(transformed_vertex, mesh.rotation.x);
-			transformed_vertex = vec3_rotate_y(transformed_vertex, mesh.rotation.y);
-			transformed_vertex = vec3_rotate_z(transformed_vertex, mesh.rotation.z);*/
-
-
 			transformed_vertices[j] = transformed_vertex;
+		}
+
+
+
+		vec3_t face_normal;
+
+		if (cull_method == CULL_BACKFACE || light_method == FLAT_SHADING)
+		{
+			// Calculate the face normal
+			face_normal = calc_face_normal(transformed_vertices);
+		}
+
+		// Apply lightning here
+		if (light_method == FLAT_SHADING)
+		{
+			// Negate the light ray
+			vec3_t light_ray = g_light.direction;
+			vec3_normalize(&light_ray); //Normalizing the vector as we don't want brightness to explode
+
+			float light_intensity_factor = -vec3_dot(light_ray, face_normal);
+
+			mesh_face.color = light_apply_intensity(mesh_face.color, light_intensity_factor);
 		}
 
 		// Enable/disable back-face culling
 		if (cull_method == CULL_BACKFACE)
 		{
-			// Calculate the face normal
-			vec3_t normal = calc_face_normal(transformed_vertices);
-
 			// Find the vector between a point in the triangle and the camera origin
 			vec3_t camera_ray = vec3_sub(camera_position, vec3_from_vec4(transformed_vertices[0]));
 
 			// Calcute how aligned the camera ray is with the face normal
-			float dot_normal_camera = vec3_dot(camera_ray, normal);
+			float dot_normal_camera = vec3_dot(camera_ray, face_normal);
 
 			// Bypass the triangles that are looking away from the camera
 			if (dot_normal_camera < 0) continue;
 		}
 
 
-		// Apply lightning here
-		if (light_method == FLAT_SHADING)
-		{
-			// Negate the light ray
-			vec3_t light_ray = { -1.f, 1.f, -0.5f };
-			vec3_normalize(&light_ray);
-
-			
-			// Calculate the face normal
-			vec3_t face_normal = calc_face_normal(transformed_vertices);
-
-			float face_normal_dot_light_ray = vec3_dot(light_ray, face_normal);
-			
-			// Calculate percentage factor
-			float percentage_factor = (face_normal_dot_light_ray + 1) / 2;
-			
-			mesh_face.color = light_apply_intensity(mesh_face.color, percentage_factor);
-		}
+	
 	
 		//Triangle stores the actual projected point 
 		//triangle_t projected_triangle;
@@ -286,6 +266,10 @@ void update(void) {
 			projected_points[j].x *= window_width / 2.0f;
 			projected_points[j].y *= window_height / 2.0f;
 
+			// Invert the y value, because our y-axis in screen goes down
+			projected_points[j].y *= -1;
+			projected_points[j].x *= -1;
+
 			//Translate 
 			projected_points[j].x += (window_width / 2.0f);
 			projected_points[j].y += (window_height / 2.0f);
@@ -298,18 +282,21 @@ void update(void) {
 
 		triangle_t projected_triangle = {
 			.points = {
-				{projected_points[0].x,projected_points[0].y},
-				{projected_points[1].x,projected_points[1].y},
-				{projected_points[2].x,projected_points[2].y}
+				{projected_points[0].x,projected_points[0].y, projected_points[0].z, projected_points[0].w},
+				{projected_points[1].x,projected_points[1].y, projected_points[1].z, projected_points[1].w},
+				{projected_points[2].x,projected_points[2].y, projected_points[2].z, projected_points[2].w}
+			},
+			.texcoords = {
+				{mesh_face.a_uv.u, mesh_face.a_uv.v},
+				{mesh_face.b_uv.u, mesh_face.b_uv.v},
+				{mesh_face.c_uv.u, mesh_face.c_uv.v}
 			},
 			.color = mesh_face.color,
 			.avg_depth = avg_depth
 		};
 
-		//triangles_to_render[i] = projected_triangle;
 		array_push(triangles_to_render, projected_triangle);
 	}
-
 
 
 
@@ -322,7 +309,7 @@ void update(void) {
 void render(void) {
 
 	//Do operations on colour buffer before rendering as a SDL texture
-	draw_grid();
+	//draw_grid();
 
 	// Set vertex size here for RENDER_WIRE_VERTEX option
 	vertex_size = render_method == RENDER_WIRE_VERTEX ? 4 : 1;
@@ -335,6 +322,7 @@ void render(void) {
 
 		triangle_t triangle = triangles_to_render[i];
 
+		//Draw a rectangle for each vertices
 		for (int j = 0; j < 3; j++)
 		{
 			draw_rect(
@@ -346,15 +334,30 @@ void render(void) {
 				);
 		}
 
+		// Fill inside the faces/triangles
 		if (render_method == RENDER_FILL_TRIANGLE || render_method == RENDER_FILL_TRIANGLE_WIRE)
 		{
 			draw_filled_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, triangle.color);
 		}
 
-		if (render_method == RENDER_WIRE || render_method == RENDER_WIRE_VERTEX || render_method == RENDER_FILL_TRIANGLE_WIRE)
+		// Draw texture 
+		if (render_method == RENDER_TEXTURED || render_method == RENDER_TEXTURED_WIRE)
+		{
+			draw_textured_triangle(
+				triangle.points[0].x, triangle.points[0].y, triangle.points[0].z, triangle.points[0].w, triangle.texcoords[0].u, triangle.texcoords[0].v,
+				triangle.points[1].x, triangle.points[1].y, triangle.points[1].z, triangle.points[1].w, triangle.texcoords[1].u, triangle.texcoords[1].v,
+				triangle.points[2].x, triangle.points[2].y, triangle.points[2].z, triangle.points[2].w, triangle.texcoords[2].u, triangle.texcoords[2].v,
+				mesh_texture
+			);
+
+		}
+
+		// Render the lines of triangle, render lines
+		if (render_method == RENDER_WIRE || render_method == RENDER_WIRE_VERTEX || render_method == RENDER_FILL_TRIANGLE_WIRE || render_method == RENDER_TEXTURED_WIRE)
 		{
 			draw_triangle(triangle.points[0].x, triangle.points[0].y, triangle.points[1].x, triangle.points[1].y, triangle.points[2].x, triangle.points[2].y, 0xFF000000);
 		}
+
 	}
 
 
@@ -365,19 +368,18 @@ void render(void) {
 
 	//Render here
 	render_color_buffer();
-	clear_color_buffer(0xFF333300);
+	clear_color_buffer(0xFF000000);
 
 	SDL_RenderPresent(renderer);
 }
 
-
-// Free the memory that was dynamically allocated by the person
 void free_resources(void) {
 	free(colour_buffer);
+	upng_free(png_texture);
 	array_free(mesh.faces);
 	array_free(mesh.vertices);
-}
 
+}
 
 int main(int argc, char* args[]) {
 	
@@ -392,8 +394,7 @@ int main(int argc, char* args[]) {
 		render();
 	}
 
-	int arr_length = array_length(triangles_to_render);
-
+	//int arr_length = array_length(triangles_to_render); ???
 
 	destroy_window();
 	free_resources();
